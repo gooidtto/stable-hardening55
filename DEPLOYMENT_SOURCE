@@ -1,0 +1,9 @@
+AUTHORITATIVE_SOURCE=github-repository-current-branch
+BASELINE=upload-baseline-2026-08-24
+HARDENING=stable-hardening
+BUILD_ID=upload-baseline-2026-08-24
+SOURCE_BUILD=upload-baseline-2026-08-24
+NODE5_TRANSPORT=cloudflare-xhttp-tls
+NODE_COUNT_SUPPORTED=4,5
+CORE_PROTOCOLS_FROZEN=true
+CORE_GATEWAY_ROUTING_FROZEN=true
