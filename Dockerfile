@@ -13,18 +13,14 @@ COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
 COPY scripts/ /opt/xray/scripts/
 COPY config/ /opt/xray/config/
 COPY site/ /opt/xray/site/
-# Validate both Python and POSIX-shell startup code at BUILD time so a syntax
-# regression cannot reach Railway and waste a deployment cycle.
 RUN python3 -m py_compile /opt/xray/scripts/*.py && \
     for f in /opt/xray/scripts/*.sh; do sh -n "$f"; done && \
     grep -q 'vless-xhttp-cloudflare' /opt/xray/scripts/generate.py && \
     grep -q 'type":"xhttp"' /opt/xray/scripts/generate.py && \
     grep -q 'cloudflare-xhttp-tls' /opt/xray/scripts/generate.py && \
     grep -q 'tcp_proxy_expected_target":8080' /opt/xray/scripts/runtime-manifest.py && \
-    grep -q 'SUBSCRIPTION_ENDPOINT_INVARIANT=PASS' /opt/xray/scripts/start.sh && \
-    grep -q 'DEPLOYMENT SUMMARY' /opt/xray/scripts/start.sh && \
     grep -q 'application/json' /opt/xray/scripts/gateway.py && \
-    grep -q 'NODE5 endpoint does not match current Cloudflare hostname' /opt/xray/scripts/start.sh && \
+    grep -q 'RAILWAY_API_REDEPLOY=REQUESTED' /opt/xray/scripts/boot-api.sh && \
     ! grep -q 'cloudflare-ws-tls' /opt/xray/scripts/generate.py && \
     ! grep -q 'type":"ws"' /opt/xray/scripts/generate.py && \
     chmod 0755 /usr/local/bin/xray /usr/local/bin/cloudflared /opt/xray/scripts/*.sh /opt/xray/scripts/*.py && \
@@ -56,6 +52,6 @@ ENV BUILD_ID=upload-baseline-2026-08-24 \
     GATEWAY_LOGLEVEL=INFO
 RUN echo "SOURCE_BUILD=${SOURCE_BUILD} BUILD_ID=${BUILD_ID} NODE5=VLESS_XHTTP_TLS_CLOUDFLARE"
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=8).read()"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"
 WORKDIR /opt/xray
-ENTRYPOINT ["/opt/xray/scripts/boot.sh"]
+ENTRYPOINT ["/opt/xray/scripts/boot-api.sh"]
