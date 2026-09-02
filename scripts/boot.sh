@@ -4,6 +4,8 @@ umask 077
 D="${RAILWAY_VOLUME_MOUNT_PATH:-${DATA_DIR:-/data}}"
 mkdir -p "$D"
 
+# Railway system variables may be delayed briefly. Prefer the complete current
+# endpoint set; otherwise fall back to the last known-good persistent snapshot.
 resolve_public_domain() {
   value="${RAILWAY_PUBLIC_DOMAIN:-}"
   if [ -n "$value" ]; then
@@ -31,9 +33,9 @@ resolve_public_domain() {
 PUBLIC_DOMAIN=""
 TCP_HOST=""
 TCP_PORT=""
-NETWORK_WAIT_SECONDS="${RAILWAY_NETWORK_WAIT_SECONDS:-90}"
+NETWORK_WAIT_SECONDS="${RAILWAY_NETWORK_WAIT_SECONDS:-20}"
 case "$NETWORK_WAIT_SECONDS" in
-  ''|*[!0-9]*) NETWORK_WAIT_SECONDS=90 ;;
+  ''|*[!0-9]*) NETWORK_WAIT_SECONDS=20 ;;
 esac
 
 n=0
@@ -56,9 +58,8 @@ done
 NETWORKING_SOURCE="current-deployment-environment"
 NETWORKING_AUTHORITATIVE="true"
 
-# If the current deployment does not expose a complete Railway endpoint set,
-# reuse the last known-good snapshot. Support both the current flat schema and
-# the older nested tcp_proxy schema. Never replace the snapshot with fallback data.
+# The persisted snapshot has existed in two schemas. Accept both so upgrades
+# do not strand an otherwise valid installation.
 if [ -z "$PUBLIC_DOMAIN" ] || [ -z "$TCP_HOST" ] || [ -z "$TCP_PORT" ]; then
   if [ -s "$D/networking-snapshot.json" ]; then
     snapshot_values="$(python3 -c 'import json,sys
