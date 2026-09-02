@@ -1,14 +1,29 @@
 #!/bin/sh
 set -eu
 
-# Runtime-discovered deployment. No project/release/node names are hard-coded.
+# Runtime-discovered deployment. boot.sh resolves the current Railway endpoints
+# and exports them before entering this guard. Keep a small fallback here so the
+# guard never rejects a valid current deployment only because Railway exposed
+# RAILWAY_PUBLIC_URL instead of RAILWAY_PUBLIC_DOMAIN.
 PUBLIC_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"
+if [ -z "$PUBLIC_DOMAIN" ]; then
+  PUBLIC_URL="${RAILWAY_PUBLIC_URL:-}"
+  case "$PUBLIC_URL" in
+    https://*) PUBLIC_DOMAIN="${PUBLIC_URL#https://}"; PUBLIC_DOMAIN="${PUBLIC_DOMAIN%%/*}";;
+    http://*) PUBLIC_DOMAIN="${PUBLIC_URL#http://}"; PUBLIC_DOMAIN="${PUBLIC_DOMAIN%%/*}";;
+  esac
+fi
 TCP_HOST="${RAILWAY_TCP_PROXY_DOMAIN:-}"
 TCP_PORT="${RAILWAY_TCP_PROXY_PORT:-}"
-[ -n "$PUBLIC_DOMAIN" ] || { echo "FATAL: RAILWAY_PUBLIC_DOMAIN unavailable" >&2; exit 1; }
-[ -n "$TCP_HOST" ] && [ -n "$TCP_PORT" ] || { echo "FATAL: Railway TCP Proxy unavailable" >&2; exit 1; }
+[ -n "$PUBLIC_DOMAIN" ] || { echo "FATAL: current Railway public endpoint unavailable" >&2; exit 1; }
+[ -n "$TCP_HOST" ] && [ -n "$TCP_PORT" ] || { echo "FATAL: current Railway TCP Proxy unavailable" >&2; exit 1; }
 case "$TCP_PORT" in ''|*[!0-9]*) echo "FATAL: RAILWAY_TCP_PROXY_PORT must be numeric" >&2; exit 1;; esac
 [ "$TCP_PORT" -ge 1 ] && [ "$TCP_PORT" -le 65535 ] || { echo "FATAL: Railway TCP Proxy port out of range" >&2; exit 1; }
+export RAILWAY_PUBLIC_DOMAIN="$PUBLIC_DOMAIN" RAILWAY_TCP_PROXY_DOMAIN="$TCP_HOST" RAILWAY_TCP_PROXY_PORT="$TCP_PORT"
+
+echo "RAILWAY_ENDPOINTS_RESOLVED=PASS"
+echo "RAILWAY_PUBLIC_DOMAIN=$PUBLIC_DOMAIN"
+echo "RAILWAY_TCP_PROXY=$TCP_HOST:$TCP_PORT"
 
 cf_value() {
   name="$1"
