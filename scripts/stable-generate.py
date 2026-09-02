@@ -18,6 +18,7 @@ C = Path(os.environ.get("XRAY_CONFIG", str(D / "config.json")))
 SUB = D / "subscription.txt"
 RUNTIME = D / "runtime.json"
 SNAP = D / "stable-runtime-inputs.json"
+ORIGINAL_GENERATOR = Path("/opt/xray/scripts/generate-original.py")
 
 
 def env(name, default=""):
@@ -97,7 +98,9 @@ def main():
     print(f"RUNTIME_PERSISTENCE=REBUILD reason={reason}")
     print("NODE_REGENERATION=REQUIRED")
     print("SUBSCRIPTION_REGENERATION=REQUIRED")
-    subprocess.run([sys.executable, "/opt/xray/scripts/generate.py"], check=True)
+    if not ORIGINAL_GENERATOR.is_file():
+        raise RuntimeError("original generator is missing; stable generation gate cannot rebuild safely")
+    subprocess.run([sys.executable, str(ORIGINAL_GENERATOR)], check=True)
     SNAP.write_text(json.dumps({"schema": 1, "inputs": current}, indent=2) + "\n")
     try:
         os.chmod(SNAP, 0o600)
