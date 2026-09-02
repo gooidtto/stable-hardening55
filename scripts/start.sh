@@ -10,7 +10,8 @@ write_secret(){ f="$1"; v="$2"; t="$f.tmp"; printf '%s\n' "$v" >"$t"; chmod 600 
 PUBLIC_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"; TCP_HOST="${RAILWAY_TCP_PROXY_DOMAIN:-}"; TCP_PORT="${RAILWAY_TCP_PROXY_PORT:-}"
 [ -n "$PUBLIC_DOMAIN" ] || { echo "FATAL: RAILWAY_PUBLIC_DOMAIN unavailable" >&2; exit 1; }
 [ -n "$TCP_HOST" ] && [ -n "$TCP_PORT" ] || { echo "FATAL: Railway TCP Proxy unavailable" >&2; exit 1; }
-UUID=$(xray uuid); write_secret "$D/uuid.txt" "$UUID"
+UUID_FILE="$D/uuid.txt"
+if [ -s "$UUID_FILE" ]; then UUID=$(tr -d '[:space:]' <"$UUID_FILE"); echo "UUID_PERSISTENCE=REUSED"; else UUID=$(xray uuid); write_secret "$UUID_FILE" "$UUID"; echo "UUID_PERSISTENCE=CREATED"; fi
 PRIV_FILE="$D/reality_private_key.txt"; PUB_FILE="$D/reality_public_key.txt"; TOKEN_FILE="$D/subscription_token.txt"
 if [ -s "$PRIV_FILE" ] && [ -s "$PUB_FILE" ]; then PRIVATE_KEY=$(tr -d '[:space:]' <"$PRIV_FILE"); PUBLIC_KEY=$(tr -d '[:space:]' <"$PUB_FILE"); else OUT="$(xray x25519 2>&1)"; PRIVATE_KEY=$(printf '%s\n' "$OUT" | awk -F': ' '/^PrivateKey/{print $2;exit}'); PUBLIC_KEY=$(printf '%s\n' "$OUT" | awk -F': ' '/^Password/{print $2;exit}'); [ -n "$PRIVATE_KEY" ] && [ -n "$PUBLIC_KEY" ] || { echo "FATAL: failed to generate REALITY keys" >&2; exit 1; }; write_secret "$PRIV_FILE" "$PRIVATE_KEY"; write_secret "$PUB_FILE" "$PUBLIC_KEY"; fi
 if [ -s "$TOKEN_FILE" ]; then TOKEN=$(tr -d '[:space:]' <"$TOKEN_FILE"); else TOKEN=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))'); write_secret "$TOKEN_FILE" "$TOKEN"; fi
@@ -78,8 +79,6 @@ cleanup(){ kill "$XP" "$GP" "$CFP" 2>/dev/null || true; wait "$XP" 2>/dev/null |
 trap cleanup INT TERM EXIT
 xray run -config "$C" & XP=$!
 if [ "$CF_ENABLED" = 1 ]; then
-  # Token-authenticated tunnel. The server-side Cloudflare tunnel configuration
-  # must map the public hostname to the local XHTTP origin service.
   cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:2000 run --token "$CF_TOKEN" >/data/cloudflared.log 2>&1 & CFP=$!
   i=0
   while :; do
@@ -101,5 +100,6 @@ echo "SUBSCRIPTION_COUNT=$EXPECTED"
 echo "SUBSCRIPTION_CHECK=PASS"
 echo "XRAY=READY"
 echo "GATEWAY=STARTING"
+echo "PERSISTENCE_MODE=STABLE"
 echo "========================================="
 exec python3 /opt/xray/scripts/gateway.py
