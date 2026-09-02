@@ -2,7 +2,6 @@
 set -eu
 
 # Runtime-discovered deployment. No project/release/node names are hard-coded.
-# Railway networking is authoritative for the current deployment.
 PUBLIC_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"
 TCP_HOST="${RAILWAY_TCP_PROXY_DOMAIN:-}"
 TCP_PORT="${RAILWAY_TCP_PROXY_PORT:-}"
@@ -11,9 +10,6 @@ TCP_PORT="${RAILWAY_TCP_PROXY_PORT:-}"
 case "$TCP_PORT" in ''|*[!0-9]*) echo "FATAL: RAILWAY_TCP_PROXY_PORT must be numeric" >&2; exit 1;; esac
 [ "$TCP_PORT" -ge 1 ] && [ "$TCP_PORT" -le 65535 ] || { echo "FATAL: Railway TCP Proxy port out of range" >&2; exit 1; }
 
-# Cloudflare is capability-based: complete configuration enables optional Node 5;
-# absent configuration leaves the four-node Railway topology intact.
-# Canonical variables are preferred; legacy aliases are accepted only as migration aliases.
 cf_value() {
   name="$1"
   eval "value=\${$name:-}"
@@ -25,7 +21,6 @@ CF_HOST="$(cf_value CLOUDFLARE_PUBLIC_HOSTNAME)"; [ -n "$CF_HOST" ] || CF_HOST="
 CF_ORIGIN="$(cf_value CLOUDFLARE_ORIGIN_SERVICE)"; [ -n "$CF_ORIGIN" ] || CF_ORIGIN="$(cf_value CF_ORIGIN_SERVICE)"
 CF_PORT="$(cf_value CLOUDFLARE_XHTTP_PORT)"; [ -n "$CF_PORT" ] || CF_PORT="$(cf_value WS_PORT)"; [ -n "$CF_PORT" ] || CF_PORT="$(cf_value CLOUDFLARE_WS_PORT)"; [ -n "$CF_PORT" ] || CF_PORT="$(cf_value CF_WS_PORT)"
 CF_PATH="$(cf_value CLOUDFLARE_XHTTP_PATH)"; [ -n "$CF_PATH" ] || CF_PATH="$(cf_value WS_PATH)"; [ -n "$CF_PATH" ] || CF_PATH="$(cf_value CLOUDFLARE_WS_PATH)"; [ -n "$CF_PATH" ] || CF_PATH="$(cf_value CF_WS_PATH)"
-
 cf_count=0; [ -n "$CF_TOKEN" ] && cf_count=$((cf_count+1)); [ -n "$CF_ID" ] && cf_count=$((cf_count+1)); [ -n "$CF_HOST" ] && cf_count=$((cf_count+1)); [ -n "$CF_ORIGIN" ] && cf_count=$((cf_count+1)); [ -n "$CF_PORT" ] && cf_count=$((cf_count+1)); [ -n "$CF_PATH" ] && cf_count=$((cf_count+1))
 if [ "$cf_count" -ne 0 ] && [ "$cf_count" -ne 6 ]; then
   missing=""; [ -n "$CF_TOKEN" ] || missing="${missing}CLOUDFLARE_TUNNEL_TOKEN,"; [ -n "$CF_ID" ] || missing="${missing}CLOUDFLARE_TUNNEL_ID,"; [ -n "$CF_HOST" ] || missing="${missing}CLOUDFLARE_PUBLIC_HOSTNAME,"; [ -n "$CF_ORIGIN" ] || missing="${missing}CLOUDFLARE_ORIGIN_SERVICE,"; [ -n "$CF_PORT" ] || missing="${missing}CLOUDFLARE_XHTTP_PORT,"; [ -n "$CF_PATH" ] || missing="${missing}CLOUDFLARE_XHTTP_PATH,"
@@ -38,9 +33,17 @@ if [ "$cf_count" -eq 6 ]; then
   case "$CF_PATH" in /*) ;; *) echo "FATAL: Cloudflare XHTTP path must start with /" >&2; exit 1;; esac
 fi
 export CLOUDFLARE_TUNNEL_TOKEN="$CF_TOKEN" CLOUDFLARE_TUNNEL_ID="$CF_ID" CLOUDFLARE_PUBLIC_HOSTNAME="$CF_HOST" CLOUDFLARE_ORIGIN_SERVICE="$CF_ORIGIN" CLOUDFLARE_XHTTP_PORT="$CF_PORT" CLOUDFLARE_XHTTP_PATH="$CF_PATH"
-
 export NODE_MODE="${NODE_MODE:-auto}"
 export EXPECTED_NODES="${EXPECTED_NODES:-auto}"
+
+# Install the stable generation gate for this process. The original generator is
+# retained and invoked only when the client-visible identity/configuration changed
+# or required runtime artifacts are missing.
+ORIGINAL_GENERATOR=/opt/xray/scripts/generate-original.py
+if [ ! -s "$ORIGINAL_GENERATOR" ]; then cp /opt/xray/scripts/generate.py "$ORIGINAL_GENERATOR"; chmod 700 "$ORIGINAL_GENERATOR"; fi
+cp /opt/xray/scripts/stable-generate.py /opt/xray/scripts/generate.py
+chmod 700 /opt/xray/scripts/generate.py
+echo "STABLE_GENERATION_GATE=INSTALLED"
 
 python3 /opt/xray/scripts/runtime-manifest.py
 
