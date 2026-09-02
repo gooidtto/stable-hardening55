@@ -13,15 +13,17 @@ COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
 COPY scripts/ /opt/xray/scripts/
 COPY config/ /opt/xray/config/
 COPY site/ /opt/xray/site/
-# Keep runtime source immutable: never patch protocol definitions during image build.
-# The build must fail if Node 5 regresses to the deprecated WebSocket transport,
-# or if the runtime loses the Railway endpoint/8080 invariants.
+# Validate both Python and POSIX-shell startup code at BUILD time so a syntax
+# regression cannot reach Railway and waste a deployment cycle.
 RUN python3 -m py_compile /opt/xray/scripts/*.py && \
+    for f in /opt/xray/scripts/*.sh; do sh -n "$f"; done && \
     grep -q 'vless-xhttp-cloudflare' /opt/xray/scripts/generate.py && \
     grep -q 'type":"xhttp"' /opt/xray/scripts/generate.py && \
     grep -q 'cloudflare-xhttp-tls' /opt/xray/scripts/generate.py && \
     grep -q 'tcp_proxy_expected_target":8080' /opt/xray/scripts/runtime-manifest.py && \
-    grep -q 'SUBSCRIPTION_ENDPOINT_INVARIANT=PASS' /opt/xray/scripts/start.sh &&     grep -q 'DEPLOYMENT SUMMARY' /opt/xray/scripts/start.sh &&     grep -q 'application/json' /opt/xray/scripts/gateway.py && \
+    grep -q 'SUBSCRIPTION_ENDPOINT_INVARIANT=PASS' /opt/xray/scripts/start.sh && \
+    grep -q 'DEPLOYMENT SUMMARY' /opt/xray/scripts/start.sh && \
+    grep -q 'application/json' /opt/xray/scripts/gateway.py && \
     grep -q 'NODE5 endpoint does not match current Cloudflare hostname' /opt/xray/scripts/start.sh && \
     ! grep -q 'cloudflare-ws-tls' /opt/xray/scripts/generate.py && \
     ! grep -q 'type":"ws"' /opt/xray/scripts/generate.py && \
